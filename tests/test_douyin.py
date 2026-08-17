@@ -146,7 +146,12 @@ async def test_chat_open_error_accepts_panel_marker_with_name() -> None:
     filtered.nth = matches.nth
     chain = MagicMock()
     chain.filter = MagicMock(return_value=filtered)
-    page.locator.return_value = chain
+    composer_target = MagicMock()
+    composer_target.count = AsyncMock(return_value=1)
+    composer_target.is_visible = AsyncMock(return_value=True)
+    composer = MagicMock()
+    composer.first = composer_target
+    page.locator.side_effect = lambda selector: composer if selector in MESSAGE_INPUTS else chain
 
     chat = DouyinChat(page)
 
@@ -183,6 +188,7 @@ async def test_chat_open_error_rejects_composer_when_name_is_only_in_sidebar() -
     error = await chat._chat_open_error("好友A")
 
     assert isinstance(error, PageOperationError)
+    assert "右侧标题: 不匹配" in str(error)
     assert "输入框: 有" in str(error)
 
 

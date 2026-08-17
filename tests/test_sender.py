@@ -5,6 +5,7 @@ import pytest
 from app.models import Message
 from app.douyin import PageOperationError
 from app.sender import (
+    CURRENT_CONVERSATION_ROW,
     LATEST_OUTGOING_MESSAGE,
     SEND_BUTTONS,
     _click_and_confirm_sticker,
@@ -208,6 +209,7 @@ async def test_sticker_confirmation_waits_for_new_matching_outgoing_message() ->
 async def test_text_confirmation_waits_for_new_matching_outgoing_message() -> None:
     page = MagicMock()
     page.wait_for_function = AsyncMock()
+    page.wait_for_timeout = AsyncMock()
     latest_group = MagicMock()
     latest = MagicMock()
     latest_group.first = latest
@@ -222,12 +224,18 @@ async def test_text_confirmation_waits_for_new_matching_outgoing_message() -> No
 
     await _confirm_text_sent(page, ("anchor", "old-content"), "续火花 ✨")
 
-    assert page.wait_for_function.await_args.kwargs["arg"] == [
+    assert page.wait_for_function.await_args_list[0].kwargs["arg"] == [
         LATEST_OUTGOING_MESSAGE,
         "anchor",
         "old-content",
         "续火花 ✨",
     ]
+    assert page.wait_for_function.await_args_list[1].kwargs["arg"] == [
+        LATEST_OUTGOING_MESSAGE,
+        CURRENT_CONVERSATION_ROW,
+        "续火花 ✨",
+    ]
+    page.wait_for_timeout.assert_awaited_once_with(3_000)
 
 
 @pytest.mark.asyncio

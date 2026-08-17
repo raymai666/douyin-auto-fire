@@ -47,9 +47,10 @@ async def _publish_ready(page: Page) -> bool:
 
 
 LATEST_OUTGOING_MESSAGE = (
-    '.messageMessageListlist [data-index="0"] '
+    '.componentsRightPanelwrapper .messageMessageListlist [data-index="0"] '
     '.messageMessageBoxmessageBox:has(.messageMessageBoxcontentBox.messageMessageBoxisFromMe)'
 )
+CURRENT_CONVERSATION_ROW = '[data-e2e="conversation-item"][class*="curConversation"]'
 MESSAGE_CONFIRM_ANCHOR = "data-douyin-sender-anchor"
 SEND_FAILURE_MARKERS = (
     "text=发送失败",
@@ -145,6 +146,20 @@ async def _confirm_text_sent(
             }""",
             arg=[LATEST_OUTGOING_MESSAGE, anchor, before_content, content],
             timeout=timeout_ms,
+        )
+        await page.wait_for_timeout(3_000)
+        await page.wait_for_function(
+            """([selector, currentRowSelector, expectedText]) => {
+                const message = document.querySelector(selector);
+                const currentRow = document.querySelector(currentRowSelector);
+                if (!message || !currentRow) return false;
+                const body = message.querySelector('[data-e2e="msg-item-content"]') || message;
+                const messageText = body.innerText || body.textContent || '';
+                const previewText = currentRow.innerText || currentRow.textContent || '';
+                return messageText.includes(expectedText) && previewText.includes(expectedText.slice(0, 20));
+            }""",
+            arg=[LATEST_OUTGOING_MESSAGE, CURRENT_CONVERSATION_ROW, content],
+            timeout=10_000,
         )
         latest = page.locator(LATEST_OUTGOING_MESSAGE).first
         for selector in SEND_FAILURE_MARKERS:

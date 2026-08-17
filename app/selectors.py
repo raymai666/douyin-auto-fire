@@ -26,7 +26,6 @@ CHAT_PANEL_MARKERS = (
     '[class*="chatHeader"]',
     '[class*="ChatHeader"]',
     '[data-e2e="chat-header"]',
-    '[data-e2e="conversation-item"][class*="curConversation"]',
 )
 MESSAGE_INPUTS = (
     '[data-contents="true"]',

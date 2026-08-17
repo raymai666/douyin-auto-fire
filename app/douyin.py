@@ -133,18 +133,26 @@ class DouyinChat:
             await self.page.wait_for_timeout(500)
 
     async def _chat_open_error(self, name: str) -> PageOperationError | None:
+        header_visible = False
         for selector in CHAT_PANEL_MARKERS:
             matches = self.page.locator(selector).filter(has_text=name)
             for index in range(await matches.count()):
                 try:
                     if await matches.nth(index).is_visible():
-                        return None
+                        header_visible = True
+                        break
                 except Exception:
                     continue
+            if header_visible:
+                break
 
         composer_visible = await self._composer_visible()
+        if header_visible and composer_visible:
+            return None
         return PageOperationError(
-            f"点击搜索结果后无法确认聊天已打开: {name}（输入框: {'有' if composer_visible else '无'}）"
+            "点击搜索结果后无法确认聊天已打开: "
+            f"{name}（右侧标题: {'匹配' if header_visible else '不匹配'}，"
+            f"输入框: {'有' if composer_visible else '无'}）"
         )
 
     async def _composer_visible(self) -> bool:
