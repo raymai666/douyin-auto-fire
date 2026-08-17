@@ -5,7 +5,6 @@ import pytest
 from app.models import Message
 from app.douyin import PageOperationError
 from app.sender import (
-    CURRENT_CONVERSATION_ROW,
     LATEST_OUTGOING_MESSAGE,
     SEND_BUTTONS,
     _click_and_confirm_sticker,
@@ -232,7 +231,6 @@ async def test_text_confirmation_waits_for_new_matching_outgoing_message() -> No
     ]
     assert page.wait_for_function.await_args_list[1].kwargs["arg"] == [
         LATEST_OUTGOING_MESSAGE,
-        CURRENT_CONVERSATION_ROW,
         "续火花 ✨",
     ]
     page.wait_for_timeout.assert_awaited_once_with(3_000)
