@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.browser import _normalize_cookies, open_private_messages
+from app.browser import _normalize_cookies, open_private_messages, wait_for_first_visible
 from app.config import ConfigError
 from app.selectors import DOUYIN_CHAT_URL
 
@@ -17,6 +17,27 @@ async def test_opens_chat_directly_before_checking_login() -> None:
         await open_private_messages(page)
 
     page.goto.assert_awaited_once_with(DOUYIN_CHAT_URL, wait_until="domcontentloaded", timeout=45_000)
+
+
+@pytest.mark.asyncio
+async def test_wait_for_first_visible_checks_all_alternatives_each_poll() -> None:
+    page = MagicMock()
+    old_locator = MagicMock()
+    old_locator.is_visible = AsyncMock(return_value=False)
+    new_locator = MagicMock()
+    new_locator.is_visible = AsyncMock(side_effect=[False, True])
+    page.locator.side_effect = [
+        MagicMock(first=old_locator),
+        MagicMock(first=new_locator),
+        MagicMock(first=old_locator),
+        MagicMock(first=new_locator),
+    ]
+    page.wait_for_timeout = AsyncMock()
+
+    result = await wait_for_first_visible(page, ("old-selector", "new-selector"), timeout_ms=1_000)
+
+    assert result is new_locator
+    page.wait_for_timeout.assert_awaited_once()
 
 
 def test_normalizes_cookie_editor_export() -> None:

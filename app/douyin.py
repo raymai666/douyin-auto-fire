@@ -4,6 +4,7 @@ import asyncio
 
 from playwright.async_api import Locator, Page
 
+from app.browser import wait_for_first_visible
 from app.selectors import CHAT_PANEL_MARKERS, MESSAGE_INPUTS, SEARCH_INPUTS
 
 
@@ -173,14 +174,9 @@ class DouyinChat:
 
 
 async def first_visible(page: Page, selectors: tuple[str, ...], timeout_ms: int = 15_000) -> Locator:
-    per_selector = max(500, timeout_ms // max(1, len(selectors)))
-    for selector in selectors:
-        locator = page.locator(selector).first
-        try:
-            await locator.wait_for(state="visible", timeout=per_selector)
-            return locator
-        except Exception:
-            continue
+    locator = await wait_for_first_visible(page, selectors, timeout_ms)
+    if locator is not None:
+        return locator
     raise PageOperationError(f"找不到页面元素，已尝试: {', '.join(selectors)}")
 
 

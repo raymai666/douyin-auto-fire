@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
+from playwright.async_api import Browser, BrowserContext, Locator, Page, Playwright, async_playwright
 
 from app.config import ConfigError, parse_auth_json
 from app.models import Settings
@@ -73,7 +74,7 @@ async def verify_login(page: Page, timeout_ms: int = 15_000) -> None:
         raise AuthenticationError("未检测到抖音私信页面，登录状态可能失效或页面结构已变化")
 
 
-async def open_private_messages(page: Page, timeout_ms: int = 15_000) -> None:
+async def open_private_messages(page: Page, timeout_ms: int = 30_000) -> None:
     await page.goto(DOUYIN_CHAT_URL, wait_until="domcontentloaded", timeout=45_000)
     if await _any_visible(page, RISK_MARKERS, timeout_ms=2_000):
         raise RiskControlError("抖音私信页面要求进行安全验证，任务已停止")
@@ -90,14 +91,33 @@ async def save_trace(session: BrowserSession, path: Path) -> None:
 
 
 async def _any_visible(page: Page, selectors: tuple[str, ...], timeout_ms: int) -> bool:
-    per_selector = max(250, timeout_ms // max(1, len(selectors)))
-    for selector in selectors:
-        try:
-            await page.locator(selector).first.wait_for(state="visible", timeout=per_selector)
-            return True
-        except Exception:
-            continue
-    return False
+    return await wait_for_first_visible(page, selectors, timeout_ms) is not None
+
+
+async def wait_for_first_visible(
+    page: Page,
+    selectors: tuple[str, ...],
+    timeout_ms: int,
+) -> Locator | None:
+    """Poll all selector alternatives within one shared timeout."""
+    timeout_seconds = max(0, timeout_ms) / 1000
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+
+    while True:
+        for selector in selectors:
+            locator = page.locator(selector).first
+            try:
+                if await locator.is_visible():
+                    return locator
+            except Exception:
+                # A selector can temporarily fail while the SPA replaces its DOM.
+                # Continue checking the remaining alternatives during the same timeout.
+                continue
+
+        remaining_ms = int((deadline - asyncio.get_running_loop().time()) * 1000)
+        if remaining_ms <= 0:
+            return None
+        await page.wait_for_timeout(min(250, remaining_ms))
 
 
 def _normalize_cookies(cookies: list[Any]) -> list[dict[str, Any]]:
