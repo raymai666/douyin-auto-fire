@@ -21,12 +21,12 @@ SEARCH_INPUTS = (
     '[role="textbox"][placeholder*="搜索"]',
 )
 CHAT_PANEL_MARKERS = (
-    '[class*="RightPanelHeader"]',
+    '[class*="RightPanelHeadertitle"]',
+    '[class*="RightPanelHeaderconvHeader"]',
     '[class*="chatHeader"]',
     '[class*="ChatHeader"]',
-    '[class*="messageContent"]',
-    '[class*="chatContent"]',
-    '[class*="MessagePanel"]',
+    '[data-e2e="chat-header"]',
+    '[data-e2e="conversation-item"][class*="curConversation"]',
 )
 MESSAGE_INPUTS = (
     '[data-contents="true"]',

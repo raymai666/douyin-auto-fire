@@ -134,30 +134,15 @@ class DouyinChat:
 
     async def _chat_open_error(self, name: str) -> PageOperationError | None:
         for selector in CHAT_PANEL_MARKERS:
-            locator = self.page.locator(selector).filter(has_text=name).first
-            if await locator.count():
-                return None
-
-        composer_visible = await self._composer_visible()
-        if composer_visible:
-            body_text = ""
-            try:
-                body_text = (await self.page.locator("body").inner_text())[:1000].replace("\n", " ")
-            except Exception:
-                body_text = ""
-            if name in body_text:
-                return None
-            text = self.page.get_by_text(name, exact=True)
-            for index in range(await text.count()):
-                candidate = text.nth(index)
+            matches = self.page.locator(selector).filter(has_text=name)
+            for index in range(await matches.count()):
                 try:
-                    if not await candidate.is_visible():
-                        continue
-                    class_name = await candidate.get_attribute("class") or ""
-                    if "conversationConversationItemtitle" not in class_name:
+                    if await matches.nth(index).is_visible():
                         return None
                 except Exception:
                     continue
+
+        composer_visible = await self._composer_visible()
         return PageOperationError(
             f"点击搜索结果后无法确认聊天已打开: {name}（输入框: {'有' if composer_visible else '无'}）"
         )

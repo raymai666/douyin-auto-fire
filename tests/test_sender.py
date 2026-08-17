@@ -8,6 +8,7 @@ from app.sender import (
     LATEST_OUTGOING_MESSAGE,
     SEND_BUTTONS,
     _click_and_confirm_sticker,
+    _confirm_text_sent,
     _confirm_sticker_sent,
     _publish_ready,
     _sticker_resource_key,
@@ -36,11 +37,16 @@ async def test_random_message_delegates_to_selected_choice(monkeypatch) -> None:
     text = Message(type="text", content="你好")
     message = Message(type="random", choices=(text,))
     monkeypatch.setattr("app.sender.random.choice", lambda choices: choices[0])
+    mark = AsyncMock(return_value=("anchor", "old-content"))
+    confirm = AsyncMock()
+    monkeypatch.setattr("app.sender._mark_latest_outgoing_message", mark)
+    monkeypatch.setattr("app.sender._confirm_text_sent", confirm)
 
     await send_message(page, chat, message, {})
 
     page.keyboard.insert_text.assert_awaited_once_with("你好")
     page.keyboard.press.assert_awaited_once_with("Enter")
+    confirm.assert_awaited_once_with(page, ("anchor", "old-content"), "你好")
 
 
 @pytest.mark.asyncio
@@ -196,6 +202,44 @@ async def test_sticker_confirmation_waits_for_new_matching_outgoing_message() ->
         "resource-key",
     ]
     page.wait_for_timeout.assert_awaited_once_with(3_000)
+
+
+@pytest.mark.asyncio
+async def test_text_confirmation_waits_for_new_matching_outgoing_message() -> None:
+    page = MagicMock()
+    page.wait_for_function = AsyncMock()
+    latest_group = MagicMock()
+    latest = MagicMock()
+    latest_group.first = latest
+    marker_group = MagicMock()
+    marker = MagicMock()
+    marker_group.first = marker
+    marker.count = AsyncMock(return_value=0)
+    latest.locator.return_value = marker_group
+    anchors = MagicMock()
+    anchors.evaluate_all = AsyncMock()
+    page.locator.side_effect = lambda selector: latest_group if selector == LATEST_OUTGOING_MESSAGE else anchors
+
+    await _confirm_text_sent(page, ("anchor", "old-content"), "续火花 ✨")
+
+    assert page.wait_for_function.await_args.kwargs["arg"] == [
+        LATEST_OUTGOING_MESSAGE,
+        "anchor",
+        "old-content",
+        "续火花 ✨",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_text_confirmation_reports_missing_new_message() -> None:
+    page = MagicMock()
+    page.wait_for_function = AsyncMock(side_effect=TimeoutError)
+    anchors = MagicMock()
+    anchors.evaluate_all = AsyncMock()
+    page.locator.return_value = anchors
+
+    with pytest.raises(PageOperationError, match="没有检测到新的已发送消息"):
+        await _confirm_text_sent(page, ("anchor", "old-content"), "续火花 ✨")
 
 
 @pytest.mark.asyncio

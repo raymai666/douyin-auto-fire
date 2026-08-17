@@ -50,8 +50,8 @@ LATEST_OUTGOING_MESSAGE = (
     '.messageMessageListlist [data-index="0"] '
     '.messageMessageBoxmessageBox:has(.messageMessageBoxcontentBox.messageMessageBoxisFromMe)'
 )
-STICKER_CONFIRM_ANCHOR = "data-douyin-sender-anchor"
-STICKER_FAILURE_MARKERS = (
+MESSAGE_CONFIRM_ANCHOR = "data-douyin-sender-anchor"
+SEND_FAILURE_MARKERS = (
     "text=发送失败",
     '[aria-label*="重试"]',
     '[title*="重试"]',
@@ -84,6 +84,7 @@ async def send_message(page: Page, chat: DouyinChat, message: Message, stickers:
 async def send_text(chat: DouyinChat, content: str) -> None:
     editor = await chat.message_input()
     page = editor.page
+    before = await _mark_latest_outgoing_message(page)
     await editor.click()
     await page.keyboard.insert_text(content)
     try:
@@ -107,6 +108,7 @@ async def send_text(chat: DouyinChat, content: str) -> None:
             await _wait_for_composer_clear(page)
         else:
             raise
+    await _confirm_text_sent(page, before, content)
 
 
 async def _wait_for_composer_clear(page: Page, timeout_ms: int = 10_000) -> None:
@@ -120,6 +122,41 @@ async def _wait_for_composer_clear(page: Page, timeout_ms: int = 10_000) -> None
         )
     except Exception as exc:
         raise PageOperationError("已点击发送，但无法确认文字是否发送成功；为避免重复不会自动重试") from exc
+
+
+async def _confirm_text_sent(
+    page: Page,
+    before: tuple[str, str],
+    content: str,
+    timeout_ms: int = 15_000,
+) -> None:
+    anchor, before_content = before
+    try:
+        await page.wait_for_function(
+            """([selector, anchor, previousContent, expectedText]) => {
+                const message = document.querySelector(selector);
+                if (!message) return false;
+                const body = message.querySelector('[data-e2e="msg-item-content"]') || message;
+                const isNewMessage =
+                    message.getAttribute('data-douyin-sender-anchor') !== anchor ||
+                    body.innerHTML !== previousContent;
+                if (!isNewMessage) return false;
+                return (body.innerText || body.textContent || '').includes(expectedText);
+            }""",
+            arg=[LATEST_OUTGOING_MESSAGE, anchor, before_content, content],
+            timeout=timeout_ms,
+        )
+        latest = page.locator(LATEST_OUTGOING_MESSAGE).first
+        for selector in SEND_FAILURE_MARKERS:
+            marker = latest.locator(selector).first
+            if await marker.count() and await marker.is_visible():
+                raise PageOperationError(f"文字消息“{content}”发送失败，页面提示可以重试")
+    except PageOperationError:
+        raise
+    except Exception as exc:
+        raise PageOperationError(f"文字消息“{content}”已触发发送，但没有检测到新的已发送消息") from exc
+    finally:
+        await _clear_message_anchors(page)
 
 
 async def send_image(page: Page, image_path: str) -> None:
@@ -256,7 +293,7 @@ async def _confirm_sticker_sent(
         )
         await page.wait_for_timeout(3_000)
         latest = page.locator(LATEST_OUTGOING_MESSAGE).first
-        for selector in STICKER_FAILURE_MARKERS:
+        for selector in SEND_FAILURE_MARKERS:
             marker = latest.locator(selector).first
             if await marker.count() and await marker.is_visible():
                 raise PageOperationError(f"原生表情“{name}”发送失败，页面提示可以重试")
@@ -265,10 +302,14 @@ async def _confirm_sticker_sent(
     except Exception as exc:
         raise PageOperationError(f"原生表情“{name}”已点击，但没有检测到新的已发送消息") from exc
     finally:
-        anchors = page.locator(f"[{STICKER_CONFIRM_ANCHOR}]")
-        try:
-            await anchors.evaluate_all(
-                "elements => elements.forEach(element => element.removeAttribute('data-douyin-sender-anchor'))"
-            )
-        except Exception:
-            pass
+        await _clear_message_anchors(page)
+
+
+async def _clear_message_anchors(page: Page) -> None:
+    anchors = page.locator(f"[{MESSAGE_CONFIRM_ANCHOR}]")
+    try:
+        await anchors.evaluate_all(
+            "elements => elements.forEach(element => element.removeAttribute('data-douyin-sender-anchor'))"
+        )
+    except Exception:
+        pass

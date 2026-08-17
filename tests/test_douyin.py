@@ -137,8 +137,13 @@ async def test_chat_open_error_accepts_panel_marker_with_name() -> None:
     page = MagicMock()
     marker = MagicMock()
     marker.count = AsyncMock(return_value=1)
+    marker.is_visible = AsyncMock(return_value=True)
+    matches = MagicMock()
+    matches.count = AsyncMock(return_value=1)
+    matches.nth.return_value = marker
     filtered = MagicMock()
-    filtered.first = marker
+    filtered.count = matches.count
+    filtered.nth = matches.nth
     chain = MagicMock()
     chain.filter = MagicMock(return_value=filtered)
     page.locator.return_value = chain
@@ -148,28 +153,18 @@ async def test_chat_open_error_accepts_panel_marker_with_name() -> None:
     assert await chat._chat_open_error("好友A") is None
 
 
-def _routed_page(*, name_in_body: str, input_count: int) -> MagicMock:
+def _routed_page(*, input_count: int) -> MagicMock:
     page = MagicMock()
-    body = MagicMock()
-    body.inner_text = AsyncMock(return_value=name_in_body)
     first_target = MagicMock()
     first_target.count = AsyncMock(return_value=input_count)
     first_target.is_visible = AsyncMock(return_value=True)
     composer = MagicMock()
     composer.first = first_target
-    filtered_first = MagicMock()
-    filtered_first.count = AsyncMock(return_value=0)
     filtered = MagicMock()
-    filtered.first = filtered_first
+    filtered.count = AsyncMock(return_value=0)
     chain = MagicMock()
     chain.filter = MagicMock(return_value=filtered)
-    get_by_text = MagicMock()
-    get_by_text.count = AsyncMock(return_value=0)
-    page.get_by_text.return_value = get_by_text
-
     def locator_router(selector: str):
-        if selector == "body":
-            return body
         if selector in MESSAGE_INPUTS:
             return composer
         return chain
@@ -179,18 +174,21 @@ def _routed_page(*, name_in_body: str, input_count: int) -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_chat_open_error_accepts_composer_and_page_name() -> None:
+async def test_chat_open_error_rejects_composer_when_name_is_only_in_sidebar() -> None:
     assert CHAT_PANEL_MARKERS
-    page = _routed_page(name_in_body="页面内容 好友A 你好", input_count=1)
+    page = _routed_page(input_count=1)
 
     chat = DouyinChat(page)
 
-    assert await chat._chat_open_error("好友A") is None
+    error = await chat._chat_open_error("好友A")
+
+    assert isinstance(error, PageOperationError)
+    assert "输入框: 有" in str(error)
 
 
 @pytest.mark.asyncio
 async def test_chat_open_error_rejects_when_name_absent() -> None:
-    page = _routed_page(name_in_body="页面没有目标好友", input_count=0)
+    page = _routed_page(input_count=0)
 
     chat = DouyinChat(page)
 
